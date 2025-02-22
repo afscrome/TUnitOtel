@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TUnitOtel", "TUnitOtel.csproj", "{41BBE03C-32D4-218C-8E53-BAE6FEA0EE24}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{41BBE03C-32D4-218C-8E53-BAE6FEA0EE24}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{41BBE03C-32D4-218C-8E53-BAE6FEA0EE24}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{41BBE03C-32D4-218C-8E53-BAE6FEA0EE24}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{41BBE03C-32D4-218C-8E53-BAE6FEA0EE24}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {EDCDDD46-451C-422A-B806-E9A7177EEE2A}
+	EndGlobalSection
+EndGlobal
