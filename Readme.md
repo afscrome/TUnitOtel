@@ -1,7 +1,6 @@
 An exploration of exporting test results from TUnit as Open Telemetry.
 
 Right now traces work to show the overall flow of tests and their containing classes.
-However traces within tests do not get properly linked back to the test as the the way hooks are run doesn't persist `Activity.Current`.  (i.e. if a test makes an http call to `http://google.com/` that call doesn't properly get linked back to the Test span.)
 
 ## Exporting OTEl to aspire
 
