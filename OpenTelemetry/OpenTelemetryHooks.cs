@@ -18,76 +18,68 @@ internal static class OpenTelemetryHooks
         private static Activity? _discoveryActivity = null;
 
         [Before(HookType.TestDiscovery)]
-        public static Task BeforeDiscovery()
+        public static void BeforeDiscovery()
         {
             _discoveryActivity = _activitySource.StartActivity($"TestDiscovery {DateTime.UtcNow}");
-            return Task.CompletedTask;
         }
 
 
         [After(HookType.TestDiscovery)]
-        public static Task AfterDiscovery(TestDiscoveryContext context)
+        public static void AfterDiscovery(TestDiscoveryContext context)
         {
             _discoveryActivity?.AddTag("Tests", context.AllTests.Count());
             _discoveryActivity?.AddTag("TestClasses", context.TestClasses.Count());
             _discoveryActivity?.AddTag("Assemblies", context.Assemblies.Count());
             _discoveryActivity?.AddTag("Filter", context.TestFilter);
             _discoveryActivity?.Dispose();
-            return Task.CompletedTask;
         }
     }
 
     public static class TestSession
     {
         [BeforeEvery(HookType.TestSession)]
-        public static Task BeforeTestSession(TestSessionContext context)
+        public static void BeforeTestSession(TestSessionContext context)
         {
             var activity = _activitySource.StartActivity($"TestSession {DateTime.UtcNow}");
             ContextActivities.Add(context, activity);
-            return Task.CompletedTask;
         }
 
         [AfterEvery(HookType.TestSession)]
-        public static Task AfterTestSession(TestSessionContext context)
+        public static void AfterTestSession(TestSessionContext context)
         {
             var activity = ContextActivities.Retrieve(context);
             TagActivityWithTestResults(activity, context.AllTests);
             activity?.Dispose();
 
             _otelExporter.Dispose();
-            return Task.CompletedTask;
         }
     }
 
     public static class Assembly
     {
         [BeforeEvery(HookType.Assembly)]
-        public static Task BeforeAssembly(AssemblyHookContext context)
+        public static void BeforeAssembly(AssemblyHookContext context)
         {
             var parentContext = ContextActivities.GetActivityContext(TestSessionContext.Current);
 
             var activity = _activitySource.StartActivity(ActivityKind.Internal, parentContext, name: "Assembly " + context.Assembly.GetName().Name);
 
             ContextActivities.Add(context.Assembly, activity);
-            return Task.CompletedTask;
-
         }
 
         [AfterEvery(HookType.Assembly)]
-        public static Task AfterAssembly(AssemblyHookContext context)
+        public static void AfterAssembly(AssemblyHookContext context)
         {
             var activity = ContextActivities.Retrieve(context.Assembly);
             TagActivityWithTestResults(activity, context.AllTests);
             activity?.Dispose();
-
-            return Task.CompletedTask;
         }
     }
 
     public static class Class
     {
         [BeforeEvery(HookType.Class)]
-        public static Task BeforeClass(ClassHookContext context)
+        public static void BeforeClass(ClassHookContext context)
         {
             var parentContext = ContextActivities.GetActivityContext(context.ClassType.Assembly);
 
@@ -95,25 +87,21 @@ internal static class OpenTelemetryHooks
             ContextActivities.Add(context.ClassType, activity);
 
             activity?.AddTag(SemanticConventions.SuiteName, context.ClassType.FullName);
-            return Task.CompletedTask;
-
         }
 
         [AfterEvery(HookType.Class)]
-        public static Task AfterClass(ClassHookContext context)
+        public static void AfterClass(ClassHookContext context)
         {
             var activity = ContextActivities.Retrieve(context.ClassType);
             TagActivityWithTestResults(activity, context.Tests);
             activity?.Dispose();
-
-            return Task.CompletedTask;
         }
     }
 
     public static class Test
     {
         [BeforeEvery(HookType.Test)]
-        public static Task BeforeTest(TestContext context)
+        public static void BeforeTest(TestContext context)
         {
             var parentContext = ContextActivities.GetActivityContext(context.TestDetails.TestClass.Type);
             var activity = _activitySource.StartActivity(ActivityKind.Internal, parentContext, name: "Test " + context.GetTestDisplayName());
@@ -128,13 +116,10 @@ internal static class OpenTelemetryHooks
             // To avoid having one giant trace, should we make each test a dedicated trace, with a link
             // back to the overarching activity
             //activity?.AddLink(new ActivityLink(parentContext));
-
-            return Task.CompletedTask;
-
         }
 
         [AfterEvery(HookType.Test)]
-        public static Task AfterTest(TestContext context)
+        public static void AfterTest(TestContext context)
         {
             using var activity = ContextActivities.Retrieve(context);
 
@@ -162,8 +147,6 @@ internal static class OpenTelemetryHooks
             {
                 activity?.SetEndTime(result.End.Value.DateTime);
             }
-
-            return Task.CompletedTask;
         }
     }
 

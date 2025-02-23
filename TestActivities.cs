@@ -6,7 +6,7 @@ namespace TUnitOtel;
 public class TestActivities
 {
     [Test]
-    public async Task CurrentActivity_ShouldBeAvialable()
+    public async Task CurrentActivity_ShouldBeAvailable()
     {
         var activity = Activity.Current;
 
