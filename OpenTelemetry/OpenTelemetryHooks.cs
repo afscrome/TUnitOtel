@@ -16,9 +16,10 @@ internal static class OpenTelemetryHooks
         private static readonly AsyncLocal<Activity?> DiscoveryActivity = new();
 
         [Before(TestDiscovery)]
-        public static void BeforeDiscovery()
+        public static void BeforeDiscovery(BeforeTestDiscoveryContext context)
         { 
             DiscoveryActivity.Value = _activitySource.StartActivity($"TestDiscovery {DateTime.UtcNow}");
+            context.AddAsyncLocalValues();
         }
 
 
