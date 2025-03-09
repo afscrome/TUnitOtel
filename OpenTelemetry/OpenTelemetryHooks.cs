@@ -1,7 +1,4 @@
-﻿using OpenTelemetry.Trace;
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using TUnit.Core.Enums;
+﻿using System.Diagnostics;
 using TUnit.Core.Extensions;
 using Status = TUnit.Core.Enums.Status;
 
@@ -13,140 +10,190 @@ internal static class OpenTelemetryHooks
     public static OtelExporter _otelExporter = new();
     public static readonly ActivitySource _activitySource = new("TUnit", "0.0.1");
 
-    public static class TestDiscovery
-    {
-        private static Activity? _discoveryActivity = null;
 
-        [Before(HookType.TestDiscovery)]
+    public static class TestDiscoveryHooks
+    {
+        private static readonly AsyncLocal<Activity?> DiscoveryActivity = new();
+
+        [Before(TestDiscovery)]
         public static void BeforeDiscovery()
-        {
-            _discoveryActivity = _activitySource.StartActivity($"TestDiscovery {DateTime.UtcNow}");
+        { 
+            DiscoveryActivity.Value = _activitySource.StartActivity($"TestDiscovery {DateTime.UtcNow}");
         }
 
 
-        [After(HookType.TestDiscovery)]
+        [After(TestDiscovery)]
         public static void AfterDiscovery(TestDiscoveryContext context)
         {
-            _discoveryActivity?.AddTag("Tests", context.AllTests.Count());
-            _discoveryActivity?.AddTag("TestClasses", context.TestClasses.Count());
-            _discoveryActivity?.AddTag("Assemblies", context.Assemblies.Count());
-            _discoveryActivity?.AddTag("Filter", context.TestFilter);
-            _discoveryActivity?.Dispose();
+            using var activity = DiscoveryActivity.Value;
+            if (activity == null)
+            {
+                if (_activitySource.HasListeners())
+                {
+                    Console.WriteLine("Unexpected null activity");
+                }
+
+                return;
+            }
+
+            activity.AddTag("Tests", context.AllTests.Count());
+            activity.AddTag("TestClasses", context.TestClasses.Count());
+            activity.AddTag("Assemblies", context.Assemblies.Count());
+            activity?.AddTag("Filter", context.TestFilter);
         }
     }
 
-    public static class TestSession
+    public static class TestSessionHooks
     {
-        [BeforeEvery(HookType.TestSession)]
+        private static readonly AsyncLocal<Activity?> TestSessionActivity = new();
+
+        [BeforeEvery(TestSession)]
         public static void BeforeTestSession(TestSessionContext context)
-        {
-            var activity = _activitySource.StartActivity($"TestSession {DateTime.UtcNow}");
-            ContextActivities.Add(context, activity);
+        { 
+            TestSessionActivity.Value = _activitySource.StartActivity($"TestSession {DateTime.UtcNow}");
+            context.AddAsyncLocalValues();
         }
 
-        [AfterEvery(HookType.TestSession)]
+        [AfterEvery(TestSession)]
         public static void AfterTestSession(TestSessionContext context)
         {
-            var activity = ContextActivities.Retrieve(context);
-            TagActivityWithTestResults(activity, context.AllTests);
-            activity?.Dispose();
+            using (var activity = TestSessionActivity.Value)
+            {
+                if (activity == null)
+                {
+                    if (_activitySource.HasListeners())
+                    {
+                        Console.WriteLine("Unexpected null activity");
+                    }
 
+                    return;
+                }
+
+                TagActivityWithTestResults(activity, context.AllTests);
+            }
             _otelExporter.Dispose();
         }
     }
 
-    public static class Assembly
+    public static class AssemblyHooks
     {
-        [BeforeEvery(HookType.Assembly)]
+        private static readonly AsyncLocal<Activity?> AssemblyActivity = new();
+
+        [BeforeEvery(Assembly)]
         public static void BeforeAssembly(AssemblyHookContext context)
         {
-            var parentContext = ContextActivities.GetActivityContext(TestSessionContext.Current);
+            Metrics.RecordAssembly(context.Assembly);
 
-            var activity = _activitySource.StartActivity(ActivityKind.Internal, parentContext, name: "Assembly " + context.Assembly.GetName().Name);
-
-            ContextActivities.Add(context.Assembly, activity);
+            AssemblyActivity.Value = _activitySource.StartActivity("Assembly " + context.Assembly.GetName().Name);
+            context.AddAsyncLocalValues();
         }
 
-        [AfterEvery(HookType.Assembly)]
+        [AfterEvery(Assembly)]
         public static void AfterAssembly(AssemblyHookContext context)
         {
-            var activity = ContextActivities.Retrieve(context.Assembly);
+            using var activity = AssemblyActivity.Value;
+            if (activity == null)
+            {
+                if (_activitySource.HasListeners())
+                {
+                    Console.WriteLine("Unexpected null activity");
+                }
+
+                return;
+            }
+
             TagActivityWithTestResults(activity, context.AllTests);
-            activity?.Dispose();
         }
     }
 
-    public static class Class
+    public static class ClassHooks
     {
-        [BeforeEvery(HookType.Class)]
+        private static readonly AsyncLocal<Activity?> ClassActivity = new();
+
+        [BeforeEvery(Class)]
         public static void BeforeClass(ClassHookContext context)
         {
-            var parentContext = ContextActivities.GetActivityContext(context.ClassType.Assembly);
+            Metrics.RecordClass(context.ClassType);
 
-            var activity = _activitySource.StartActivity(ActivityKind.Internal, parentContext, name: "Class " + context.ClassType.Name);
-            ContextActivities.Add(context.ClassType, activity);
-
+            var activity = ClassActivity.Value = _activitySource.StartActivity("Class " + context.ClassType.Name);
             activity?.AddTag(SemanticConventions.SuiteName, context.ClassType.FullName);
+            context.AddAsyncLocalValues();
         }
 
-        [AfterEvery(HookType.Class)]
+        [AfterEvery(Class)]
         public static void AfterClass(ClassHookContext context)
         {
-            var activity = ContextActivities.Retrieve(context.ClassType);
+            using var activity = ClassActivity.Value;
+            if (activity == null)
+            {
+                if (_activitySource.HasListeners())
+                {
+                    Console.WriteLine("Unexpected null activity");
+                }
+
+                return;
+            }
+
             TagActivityWithTestResults(activity, context.Tests);
-            activity?.Dispose();
         }
     }
 
-    public static class Test
+    public static class TestHooks
     {
-        [BeforeEvery(HookType.Test)]
+        private static readonly AsyncLocal<Activity?> TestActivity = new();
+
+        [BeforeEvery(Test)]
         public static void BeforeTest(TestContext context)
         {
-            var parentContext = ContextActivities.GetActivityContext(context.TestDetails.TestClass.Type);
-            var activity = _activitySource.StartActivity(ActivityKind.Internal, parentContext, name: "Test " + context.GetTestDisplayName());
-            ContextActivities.Add(context, activity);
+            //TODO: Should we have one single trace for the entire test session, or give each test it's own trace, linking to the parent trace?
 
-            activity?.AddTag(SemanticConventions.TestCaseName, context.GetTestDisplayName());
-            activity?.AddTag(SemanticConventions.SuiteName, context.TestDetails.TestClass.Type.FullName);
+            //var linkedContext = Activity.Current;
+            //var activityContext = new ActivityContext(Activity.TraceIdGenerator?.Invoke() ?? ActivityTraceId.CreateRandom(), default, default);
+            //var activity = TestActivity.Value = _activitySource.StartActivity("Test " + context.GetTestDisplayName(), ActivityKind.Internal, activityContext);
+            var activity = TestActivity.Value = _activitySource.StartActivity("Test " + context.GetTestDisplayName(), ActivityKind.Internal);
+            if (activity == null)
+                return;
+
+            activity.AddTag(SemanticConventions.TestCaseName, context.GetTestDisplayName());
+            activity.AddTag(SemanticConventions.SuiteName, context.TestDetails.TestClass.Type.FullName);
             //https://opentelemetry.io/docs/specs/semconv/general/attributes/#source-code-attributes
-            activity?.AddTag("code.filepath", context.TestDetails.TestFilePath);
-            activity?.AddTag("code.line.number", context.TestDetails.TestLineNumber);
+            activity.AddTag("code.filepath", context.TestDetails.TestFilePath);
+            activity.AddTag("code.line.number", context.TestDetails.TestLineNumber);
 
             // To avoid having one giant trace, should we make each test a dedicated trace, with a link
             // back to the overarching activity
-            //activity?.AddLink(new ActivityLink(parentContext));
+            //if (linkedContext != null)
+            //{
+            //    activity?.AddLink(new ActivityLink(linkedContext.Context));
+            //}
+            context.AddAsyncLocalValues();
         }
 
-        [AfterEvery(HookType.Test)]
+        [AfterEvery(Test)]
         public static void AfterTest(TestContext context)
         {
-            using var activity = ContextActivities.Retrieve(context);
-
+            using var activity = TestActivity.Value;
             var result = context.Result;
+            if (activity == null || result == null)
+                return;
 
-            Metrics.RecordTest(result);
+            Metrics.RecordTest(result, context.TestDetails);
 
-            if (result?.Exception != null)
-            {
-                activity?.AddException(result.Exception);
-            }
+            if (result.Exception != null)
+                activity.AddException(result.Exception);
 
-            activity?.SetStatus(result?.Status switch
+            activity.SetStatus(result.Status switch
             {
                 Status.Passed => ActivityStatusCode.Ok,
                 Status.Failed => ActivityStatusCode.Error,
                 _ => ActivityStatusCode.Unset
             });
 
-            if (result?.Start != null)
-            {
-                activity?.SetStartTime(result.Start.Value.DateTime);
-            }
-            if (result?.End != null)
-            {
-                activity?.SetEndTime(result.End.Value.DateTime);
-            }
+            if (result.Start != null)
+                activity.SetStartTime(result.Start.Value.DateTime);
+
+            if (result.End != null)
+                activity.SetEndTime(result.End.Value.DateTime);
         }
     }
 
@@ -174,7 +221,6 @@ internal static class OpenTelemetryHooks
         activity.SetTag("failed", failedTests);
         activity.SetTag("skipped", skippedTests);
 
-
         if (failedTests > 0)
         {
             var totalTests = failedTests + passedTests;
@@ -183,40 +229,5 @@ internal static class OpenTelemetryHooks
         }
         else if (passedTests > 0)
             activity.SetStatus(ActivityStatusCode.Ok);
-    }
-
-
-    internal static class ContextActivities
-    {
-        private static readonly ConcurrentDictionary<object, Activity> _contextActivities = new();
-        public static Activity? Add(object context, Activity? activity)
-        {
-            if (activity != null)
-            {
-                _contextActivities.TryAdd(context, activity);
-            }
-            return activity;
-        }
-
-        public static ActivityContext GetActivityContext(object? context)
-        {
-            if (context == null)
-                return default;
-
-            if (_contextActivities.TryGetValue(context, out var activity))
-            {
-                return activity.Context;
-            }
-
-            return default;
-        }
-
-
-        public static Activity? Retrieve(object context)
-        {
-            return _contextActivities.TryRemove(context, out var activity)
-                ? activity
-                : null;
-        }
     }
 }
